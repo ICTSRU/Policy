@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>مكتبة السياسات | ICTD Policy Library v2.1</title>
+<title>مكتبة السياسات | ICTD Policy Library v2.2</title>
 <script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -51,6 +51,15 @@ tr:hover td{background:#fcfbfe}
 .badge.reg{border-color:#47cd89;color:var(--ok)}
 .acts{display:flex;gap:6px;justify-content:flex-end}
 .empty{padding:30px;text-align:center;color:var(--muted)}
+/* brand-kit fallback (same look as ITOC/brand/sru-brand.js) */
+.brandbar{background:#fff;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 24px;border-bottom:1px solid var(--border)}
+.brandbar img{display:block;object-fit:contain}
+.brandbar .b-sru{height:46px;max-width:290px}.brandbar .b-ictd{height:64px;max-width:180px}
+.sitefoot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 24px 18px;border-top:1px solid var(--border);background:#fff;font-size:12px;color:var(--muted)}
+.sitefoot b{color:var(--purple-dark)}
+.sitefoot a{display:inline-flex;margin-inline-start:auto}.sitefoot img{height:44px;display:block}
+@media (max-width:640px){.brandbar{padding:8px 16px}.brandbar .b-sru{height:32px}.brandbar .b-ictd{height:44px}.sitefoot img{height:36px}}
+@media print{.brandbar,.sitefoot{display:none}}
 /* delete */
 .btn.danger{border-color:var(--danger);color:var(--danger)}
 .btn.danger:hover{background:#fef3f2}
@@ -86,6 +95,7 @@ dialog::backdrop{background:rgba(36,20,54,.5)}
 <div class="navbar">
   <h1><i data-lucide="library" class="icon"></i> مكتبة السياسات <span class="en">Policy Library</span></h1>
   <span style="display:flex;gap:6px;flex-wrap:wrap">
+    <a class="btn" href="index.html" title="العودة إلى نموذج إعداد السياسات"><i data-lucide="house" class="icon"></i>الصفحة الرئيسية</a>
     <a class="btn primary" href="index.html?new=1" target="_blank" rel="noopener" style="background:#fff;color:var(--purple)"><i data-lucide="file-plus-2" class="icon"></i>سياسة جديدة</a>
     <button class="btn" onclick="load()"><i data-lucide="refresh-cw" class="icon"></i>تحديث</button>
   </span>
@@ -123,7 +133,8 @@ dialog::backdrop{background:rgba(36,20,54,.5)}
 <div class="toast" id="toast"></div>
 
 <script>
-/* ICTD Policy Library — v2.1 (detects an outdated register backend before allowing delete)
+/* ICTD Policy Library — v2.2 (home button; brand-kit fallback logos from docs/)
+   v2.1 (detects an outdated register backend before allowing delete)
    v2.0 (adds delete with type-to-confirm; soft delete to the register Archive sheet)
    Source order: Google Sheets register (latest) → bundled library (policies/library.js) for anything not in the register. */
 const CFG_KEY='ictd-policy-template-cfg';
@@ -232,8 +243,19 @@ function render(){
   if(window.lucide) lucide.createIcons();
 }
 load().then(()=>{ if(window.lucide) lucide.createIcons(); });
+
+/* Brand kit fallback: if ITOC/brand/sru-brand.js is not reachable, show the same header/footer from docs/ */
+window.addEventListener('load',()=>{
+  if(window.SRUBrand) return;
+  const h=document.createElement('header'); h.className='brandbar';
+  h.innerHTML='<img class="b-sru" src="docs/sru-logo.png" alt="جامعة سليمان الراجحي"><img class="b-ictd" src="docs/ictd-logo.png" alt="الإدارة التنفيذية للاتصالات وتقنية المعلومات">';
+  document.body.insertBefore(h,document.body.firstChild);
+  const f=document.createElement('footer'); f.className='sitefoot';
+  f.innerHTML='<span><b>مكتبة السياسات · ICTD Policy Library</b> — الإصدار <b>v2.2</b><br>الإدارة التنفيذية للاتصالات وتقنية المعلومات · جامعة سليمان الراجحي © '+new Date().getFullYear()+'</span><a href="https://ictsru.github.io/ITOC/#forms" target="_blank" rel="noopener" title="ITOC · IT Operations Center"><img src="docs/itoc-logo.png" alt="ITOC · IT Operations Center"></a>';
+  document.body.appendChild(f);
+});
 </script>
 <!-- Shared SRU Brand Kit: logo header + footer with ITOC logo -->
-<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="مكتبة السياسات · ICTD Policy Library" data-form-version="v2.1" defer></script>
+<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="مكتبة السياسات · ICTD Policy Library" data-form-version="v2.2" defer></script>
 </body>
 </html>
