@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مكتبة السياسات | ICTD Policy Library v2.1</title>
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{--purple:#501e8c;--purple-dark:#3a1464;--purple-light:#f0ebf8;--blue:#0a6eaa;--blue-light:#e6f3fa;--bg:#f7f5fb;--border:rgba(80,30,140,.12);--ink:#241436;--muted:#6b5a80;--radius:4px;--danger:#b42318;--ok:#067647;--warn:#b54708}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Cairo',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.7}
+.icon{width:16px;height:16px;vertical-align:-3px}
+.en{direction:ltr;unicode-bidi:isolate;font-size:.82em;color:#d9cdee}
+.topbar{background:var(--purple-dark);color:#fff;padding:6px 20px;font-size:12px}
+.navbar{background:var(--purple);color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.navbar h1{font-size:18px;margin:0;font-weight:800}
+.diag{height:4px;background:repeating-linear-gradient(135deg,var(--blue) 0 14px,#fff0 14px 22px),var(--blue-light)}
+.btn{border:1px solid var(--purple);background:#fff;color:var(--purple);border-radius:var(--radius);padding:6px 12px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;text-decoration:none;font-family:inherit;font-size:13px}
+.btn:hover{background:var(--purple-light)}
+.btn.primary{background:var(--purple);color:#fff}
+.btn.primary:hover{background:var(--purple-dark)}
+.navbar .btn{border-color:#fff}
+.btn.sm{padding:3px 10px;font-size:12.5px}
+main{max-width:1300px;margin:0 auto;padding:18px 20px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;cursor:pointer}
+.stat b{display:block;font-size:24px;color:var(--purple-dark);line-height:1.2}
+.stat span{font-size:12.5px;color:var(--muted)}
+.stat.on{outline:2px solid var(--purple)}
+.stat.due b{color:var(--danger)}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.filters input,.filters select{font-family:inherit;font-size:13.5px;border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;background:#fff;color:var(--ink)}
+.filters input{flex:1;min-width:220px}
+.src{font-size:12px;color:var(--muted)}
+.src .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#c9bfd8;margin-inline-end:4px}
+.src.ok .dot{background:#47cd89}.src.err .dot{background:#f97066}
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--purple-light);color:var(--purple-dark);text-align:right;padding:8px 10px;white-space:nowrap}
+td{border-top:1px solid var(--border);padding:8px 10px;vertical-align:middle}
+tr:hover td{background:#fcfbfe}
+.code{direction:ltr;text-align:right;font-weight:700;white-space:nowrap}
+.ten{font-size:12px;color:var(--muted);direction:ltr;text-align:right}
+.st{display:inline-block;padding:0 8px;border-radius:var(--radius);font-size:12px;font-weight:700;white-space:nowrap}
+.st.d{background:#fef0c7;color:var(--warn)}.st.r{background:var(--blue-light);color:var(--blue)}.st.a{background:#dcfae6;color:var(--ok)}
+.due{color:var(--danger);font-weight:700}
+.badge{font-size:11px;border:1px solid var(--border);border-radius:999px;padding:0 8px;color:var(--muted);white-space:nowrap}
+.badge.reg{border-color:#47cd89;color:var(--ok)}
+.acts{display:flex;gap:6px;justify-content:flex-end}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+/* delete */
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn.danger:hover{background:#fef3f2}
+.btn.danger.fill{background:var(--danger);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+dialog{border:1px solid var(--border);border-radius:var(--radius);padding:0;width:min(560px,calc(100vw - 32px));font-family:inherit;color:var(--ink);box-shadow:0 10px 40px rgba(58,20,100,.25)}
+dialog::backdrop{background:rgba(36,20,54,.5)}
+.dlg-h{background:var(--danger);color:#fff;padding:10px 16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.dlg-b{padding:16px;display:flex;flex-direction:column;gap:12px}
+.warn{background:#fef3f2;border:1px solid #fecdca;border-radius:var(--radius);padding:10px 12px;font-size:13px;color:#7a271a}
+.pol{background:var(--purple-light);border-radius:var(--radius);padding:10px 12px}
+.pol b{color:var(--purple-dark)}
+.dlg-b label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
+.dlg-b input,.dlg-b textarea{font-family:inherit;font-size:14px;border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px}
+.dlg-b input{direction:ltr;text-align:right}
+.dlg-b textarea{min-height:60px;resize:vertical}
+.dlg-f{display:flex;gap:8px;justify-content:flex-start;flex-wrap:wrap}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--purple-dark);color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50}
+.toast.show{opacity:1}
+/* mobile: table → cards */
+@media (max-width:820px){
+  main{padding:14px 16px}
+  table,thead,tbody,tr,td{display:block}
+  thead{display:none}
+  tr{border-top:1px solid var(--border);padding:8px 0}
+  td{border:0;padding:3px 12px}
+  .acts{justify-content:flex-start;padding-top:6px}
+}
+</style>
+</head>
+<body>
+<div class="topbar">جامعة سليمان الراجحي — الإدارة التنفيذية للاتصالات وتقنية المعلومات</div>
+<div class="navbar">
+  <h1><i data-lucide="library" class="icon"></i> مكتبة السياسات <span class="en">Policy Library</span></h1>
+  <span style="display:flex;gap:6px;flex-wrap:wrap">
+    <a class="btn primary" href="index.html?new=1" target="_blank" rel="noopener" style="background:#fff;color:var(--purple)"><i data-lucide="file-plus-2" class="icon"></i>سياسة جديدة</a>
+    <button class="btn" onclick="load()"><i data-lucide="refresh-cw" class="icon"></i>تحديث</button>
+  </span>
+</div>
+<div class="diag"></div>
+
+<main>
+  <div class="stats" id="stats"></div>
+  <div class="filters">
+    <input type="search" id="q" placeholder="ابحث بالرمز أو العنوان العربي أو الإنجليزي…" oninput="render()">
+    <select id="fStatus" onchange="render()"><option value="">كل الحالات</option><option>مسودة</option><option>قيد المراجعة</option><option>معتمدة</option></select>
+    <span class="src" id="src"><span class="dot"></span>جارٍ التحميل…</span>
+  </div>
+  <div class="card"><div id="list" class="empty">جارٍ تحميل السياسات…</div></div>
+</main>
+
+<dialog id="dlgDel">
+  <div class="dlg-h"><i data-lucide="trash-2" class="icon"></i>حذف سياسة</div>
+  <div class="dlg-b">
+    <div class="pol" id="delInfo"></div>
+    <div class="warn">⚠ سيُحذف هذا السجل من قائمة السياسات ولن يظهر في المكتبة أو القالب. تُحفظ نسخة كاملة منه في ورقة <b>Archive</b> بسجل Google Sheets، ويمكن لمسؤول النظام استرجاعها.</div>
+    <label>للتأكيد اكتب رمز السياسة <span id="delCodeHint" style="direction:ltr;font-weight:800"></span>
+      <input type="text" id="delConfirm" autocomplete="off" oninput="delCheck()" placeholder="ICTD-00P"></label>
+    <label>اسمك أو بريدك الجامعي (مطلوب — يُسجَّل مع عملية الحذف)
+      <input type="text" id="delUser" autocomplete="email" oninput="delCheck()" placeholder="name@sr.edu.sa" style="direction:ltr"></label>
+    <label>سبب الحذف (اختياري — يُسجَّل في السجل)
+      <textarea id="delReason" placeholder="مثال: دُمجت في سياسة أخرى / أُلغيت بقرار اللجنة"></textarea></label>
+    <div class="dlg-f">
+      <button class="btn danger fill" id="delGo" disabled onclick="delRun()"><i data-lucide="trash-2" class="icon"></i>حذف نهائي من القائمة</button>
+      <button class="btn" onclick="dlgDel.close()">إلغاء</button>
+      <span id="delMsg" class="src"></span>
+    </div>
+  </div>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ICTD Policy Library — v2.1 (detects an outdated register backend before allowing delete)
+   v2.0 (adds delete with type-to-confirm; soft delete to the register Archive sheet)
+   Source order: Google Sheets register (latest) → bundled library (policies/library.js) for anything not in the register. */
+const CFG_KEY='ictd-policy-template-cfg';
+let ITEMS=[], FILTER='', REG_OK=false, DEL=null, SRV_VER='', CAN_DEL=false;
+const MIN_SRV=2.0; // delete needs Code.gs v2.0 or later
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function cfg(){ let c={}; try{c=JSON.parse(localStorage.getItem(CFG_KEY)||'{}')}catch(e){} return c; }
+function apiUrl(){ return (cfg().url||(window.POLICY_CFG&&POLICY_CFG.apiUrl)||'').trim(); }
+async function api(params){
+  const url=apiUrl(); if(!url) throw new Error('NO_URL');
+  const q=new URLSearchParams(Object.assign({key:cfg().key||''},params));
+  const r=await fetch(url+(url.includes('?')?'&':'?')+q.toString()); return r.json();
+}
+async function apiPost(body){
+  const url=apiUrl(); if(!url) throw new Error('NO_URL'); const c=cfg();
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({key:c.key||'',user:c.user||''},body))});
+  return r.json();
+}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2600)}
+function askDelete(code){
+  if(!REG_OK){ toast('الحذف يتطلب الاتصال بسجل السياسات'); return; }
+  if(!CAN_DEL){ toast('حدّث كود السجل إلى Code.gs v2.0 لتفعيل الحذف'); return; }
+  DEL=ITEMS.find(x=>x.code===code); if(!DEL) return;
+  $('#delInfo').innerHTML=`<b dir="ltr">${esc(DEL.code)}</b> — ${esc(DEL.titleAr)}<br><span class="src">الإصدار ${esc(DEL.version)} · ${esc(DEL.status||'')} · المصدر: ${DEL.src==='reg'?'السجل':'المكتبة'}</span>`;
+  $('#delCodeHint').textContent=DEL.code;
+  let u=cfg().user||''; try{u=u||localStorage.getItem('ictd-policy-user')||''}catch(e){}
+  $('#delUser').value=u;
+  $('#delConfirm').value=''; $('#delReason').value=''; $('#delMsg').textContent=''; $('#delGo').disabled=true;
+  dlgDel.showModal(); if(window.lucide) lucide.createIcons(); setTimeout(()=>$('#delConfirm').focus(),50);
+}
+function delCheck(){ $('#delGo').disabled = !DEL || $('#delConfirm').value.trim().toUpperCase()!==DEL.code.toUpperCase() || $('#delUser').value.trim().length<3; }
+async function delRun(){
+  if(!DEL || $('#delGo').disabled) return;
+  $('#delGo').disabled=true; $('#delMsg').textContent='جارٍ الحذف…';
+  try{
+    const who=$('#delUser').value.trim(); try{localStorage.setItem('ictd-policy-user',who)}catch(e){}
+    const r=await apiPost({action:'delete',user:who,code:DEL.code,title:DEL.titleAr,version:DEL.version,reason:$('#delReason').value.trim()});
+    if(!r.ok) throw new Error(r.error||'');
+    dlgDel.close(); toast('تم حذف '+DEL.code+' — نسخة محفوظة في الأرشيف'); DEL=null; load();
+  }catch(e){
+    const m=e.message||'';
+    $('#delMsg').innerHTML='<b style="color:var(--danger)">تعذّر الحذف:</b> '+(
+      /unknown action/i.test(m)?'كود السجل المنشور قديم ولا يدعم الحذف. حدّث Code.gs إلى v2.0 ثم أعد النشر (New version).':
+      /unauthorized/i.test(m)?'مفتاح الوصول غير صحيح. تواصل مع مسؤول النظام.':
+      /invalid policy code/i.test(m)?'رمز السياسة غير صالح.':
+      (m?esc(m):'تعذّر الاتصال بالسجل.'));
+    delCheck();
+  }
+}
+function loadLibrary(){
+  return new Promise(ok=>{ if(window.POLICY_LIBRARY) return ok(window.POLICY_LIBRARY);
+    const sc=document.createElement('script'); sc.src='policies/library.js'; sc.onload=()=>ok(window.POLICY_LIBRARY||[]); sc.onerror=()=>ok([]); document.head.appendChild(sc); });
+}
+const num=c=>{const m=String(c).match(/\d+/);return m?+m[0]:9999};
+const today=new Date().toISOString().slice(0,10);
+
+async function load(){
+  $('#list').innerHTML='<div class="empty">جارٍ تحميل السياسات…</div>';
+  const map={};
+  // 1) bundled library
+  (await loadLibrary()).forEach(d=>{ const m=d.meta; map[m.code.toUpperCase()]={code:m.code,titleAr:m.titleAr,titleEn:m.titleEn,version:m.version,status:m.status,classification:m.classification,nextReview:m.nextReview,src:'lib'}; });
+  // 2) register (overrides library entries with the latest saved copy)
+  let regOk=false, regN=0, deleted=[]; SRV_VER=''; CAN_DEL=false;
+  if(apiUrl()){
+    try{ const r=await api({action:'list'}); if(r.ok){ regOk=true; deleted=(r.deleted||[]).map(c=>String(c).toUpperCase()); r.items.forEach(x=>{ regN++; const k=x.code.toUpperCase(); map[k]=Object.assign({},map[k]||{},{code:x.code,titleAr:x.titleAr,titleEn:x.titleEn,version:x.version,status:x.status,nextReview:x.nextReview,updatedAt:x.updatedAt,updatedBy:x.updatedBy,src:'reg'}); }); } }catch(e){}
+  }
+  if(regOk){ try{ const pg=await api({action:'ping'}); SRV_VER=(pg&&pg.version)||''; }catch(e){} CAN_DEL=parseFloat(String(SRV_VER).replace(/[^\d.]/g,''))>=MIN_SRV; }
+  deleted.forEach(c=>{ if(map[c]&&map[c].src!=='reg') delete map[c]; });
+  REG_OK=regOk;
+  const s=$('#src');
+  s.className='src '+(regOk?'ok':'err');
+  s.innerHTML='<span class="dot"></span>'+(regOk?`متصل بالسجل (${regN} في السجل)`+(CAN_DEL?'':` — <b style="color:var(--danger)">كود السجل قديم (${esc(SRV_VER||'؟')})؛ الحذف يتطلب Code.gs v2.0</b>`):'السجل غير متاح — تُعرض نسخ مكتبة السياسات');
+  ITEMS=Object.values(map).sort((a,b)=>num(a.code)-num(b.code));
+  render();
+}
+
+function stats(){
+  const c=k=>ITEMS.filter(k).length;
+  const cards=[['','الإجمالي',ITEMS.length],['معتمدة','معتمدة',c(x=>x.status==='معتمدة')],['قيد المراجعة','قيد المراجعة',c(x=>x.status==='قيد المراجعة')],['مسودة','مسودة',c(x=>x.status==='مسودة')],['due','حان موعد مراجعتها',c(x=>x.nextReview&&x.nextReview<=today)]];
+  $('#stats').innerHTML=cards.map(([k,l,n])=>`<div class="stat ${FILTER===k&&k!==''?'on':''} ${k==='due'?'due':''}" onclick="FILTER=FILTER==='${k}'?'':'${k}';render()"><b>${n}</b><span>${l}</span></div>`).join('');
+}
+function render(){
+  stats();
+  const q=$('#q').value.trim().toLowerCase(), st=$('#fStatus').value;
+  const rows=ITEMS.filter(x=>(!q||[x.code,x.titleAr,x.titleEn].join(' ').toLowerCase().includes(q))
+    &&(!st||x.status===st)
+    &&(!FILTER||(FILTER==='due'?(x.nextReview&&x.nextReview<=today):x.status===FILTER)));
+  if(!rows.length){ $('#list').innerHTML='<div class="empty">لا توجد سياسات مطابقة.</div>'; return; }
+  const cls={'مسودة':'d','قيد المراجعة':'r','معتمدة':'a'};
+  $('#list').innerHTML=`<table><thead><tr><th>الرمز</th><th>عنوان السياسة</th><th>الإصدار</th><th>الحالة</th><th>المراجعة القادمة</th><th>المصدر</th><th></th></tr></thead><tbody>${rows.map(x=>{
+    const due=x.nextReview&&x.nextReview<=today, src=x.src==='reg'?'reg':'lib';
+    const link=`index.html?code=${encodeURIComponent(x.code)}&src=${src}`;
+    return `<tr>
+      <td class="code">${esc(x.code)}</td>
+      <td><b>${esc(x.titleAr)}</b>${x.titleEn?`<div class="ten">${esc(x.titleEn)}</div>`:''}</td>
+      <td>${esc(x.version)}</td>
+      <td><span class="st ${cls[x.status]||'d'}">${esc(x.status||'—')}</span></td>
+      <td class="${due?'due':''}">${esc(x.nextReview||'—')}${due?' ⚠':''}</td>
+      <td><span class="badge ${src==='reg'?'reg':''}">${src==='reg'?'السجل':'المكتبة'}</span></td>
+      <td><div class="acts">
+        <a class="btn sm" href="${link}&view=1" target="_blank" rel="noopener"><i data-lucide="eye" class="icon"></i>عرض</a>
+        <a class="btn sm primary" href="${link}" target="_blank" rel="noopener"><i data-lucide="pencil" class="icon"></i>تعديل</a>
+        <button class="btn sm danger" onclick="askDelete('${esc(x.code)}')" ${CAN_DEL?'':'disabled'} title="${CAN_DEL?'حذف السياسة':(REG_OK?'حدّث كود السجل إلى Code.gs v2.0 لتفعيل الحذف':'الحذف يتطلب الاتصال بسجل السياسات')}"><i data-lucide="trash-2" class="icon"></i>حذف</button>
+      </div></td></tr>`;}).join('')}</tbody></table>`;
+  if(window.lucide) lucide.createIcons();
+}
+load().then(()=>{ if(window.lucide) lucide.createIcons(); });
+</script>
+<!-- Shared SRU Brand Kit: logo header + footer with ITOC logo -->
+<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="مكتبة السياسات · ICTD Policy Library" data-form-version="v2.1" defer></script>
+</body>
+</html>

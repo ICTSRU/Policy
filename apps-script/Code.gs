@@ -1,11 +1,12 @@
 /**
  * ICTD Policy Register — Google Apps Script Web App
- * Backend for: نموذج إعداد السياسات (ICTD Policy Template) v1.2
+ * Backend for: نموذج إعداد السياسات (ICTD Policy Template) v2.0
  * ---------------------------------------------------------------
  * Sheets created automatically on first run:
  *   Policies  — one row per policy code (latest saved state)
  *   Versions  — one row per (code + version) snapshot, for recall/rollback
- *   Log       — audit trail of every save
+ *   Log       — audit trail of every save / delete
+ *   Archive   — deleted policies (soft delete: full JSON kept, restorable by an administrator)
  *
  * Endpoints
  *   GET  ?action=ping
@@ -13,16 +14,19 @@
  *   GET  ?action=get&code=ICTD-22P[&version=1.0]   → full policy JSON
  *   GET  ?action=versions&code=ICTD-22P            → versions of one policy
  *   POST {action:'save', data:{…}, baseUpdatedAt, force, user, key}
+ *   POST {action:'delete', code, reason, user, key}   → moves the policy to Archive
  *        (sent as text/plain to avoid CORS preflight)
  *
  * Optional security: Project Settings → Script properties → API_KEY = <secret>
  * If set, every request must carry the same key.
  */
 
-const VERSION = 'v1.2';
+const VERSION = 'v2.0';
 const SH_POLICIES = 'Policies';
 const SH_VERSIONS = 'Versions';
 const SH_LOG = 'Log';
+const SH_ARCHIVE = 'Archive';
+const ARCHIVE_HEADERS = ['رمز السياسة Code','عنوان السياسة','الإصدار Version','تاريخ الحذف DeletedAt','حُذفت بواسطة DeletedBy','سبب الحذف Reason'];
 const CHUNK = 45000;     // Google Sheets cell limit is 50,000 chars
 const JSON_COLS = 8;     // up to ~360k chars per policy
 
@@ -35,6 +39,7 @@ function setup() {
   ensureSheet_(ss, SH_POLICIES, POLICY_HEADERS.concat(jsonHeaders_()));
   ensureSheet_(ss, SH_VERSIONS, VERSION_HEADERS.concat(jsonHeaders_()));
   ensureSheet_(ss, SH_LOG, ['الوقت Time','الإجراء Action','رمز السياسة Code','الإصدار Version','بواسطة User','ملاحظات Notes']);
+  ensureSheet_(ss, SH_ARCHIVE, ARCHIVE_HEADERS.concat(jsonHeaders_()));
   // remove the empty default sheet of a new spreadsheet
   ['Sheet1', 'الورقة1', 'ورقة1'].forEach(function (n) {
     const s = ss.getSheetByName(n);
@@ -64,7 +69,7 @@ function doGet(e) {
     setup();
     switch (p.action) {
       case 'ping':     return out_({ ok: true, version: VERSION });
-      case 'list':     return out_({ ok: true, items: list_() });
+      case 'list':     return out_({ ok: true, items: list_(), deleted: deleted_() });
       case 'get':      return out_(get_(p.code, p.version));
       case 'versions': return out_({ ok: true, items: versions_(p.code) });
       default:         return out_({ ok: false, error: 'unknown action' });
@@ -78,6 +83,7 @@ function doPost(e) {
     checkKey_(body.key);
     setup();
     if (body.action === 'save') return out_(save_(body));
+    if (body.action === 'delete') return out_(delete_(body));
     return out_({ ok: false, error: 'unknown action' });
   } catch (err) { return out_({ ok: false, error: String(err.message || err) }); }
 }
@@ -172,6 +178,89 @@ function findRow_(sh, keys) {
     if (hit) return i + 2;
   }
   return 0;
+}
+
+/* ---------------- delete (soft) ---------------- */
+// Moves the policy row (with its full JSON) to the Archive sheet and removes it from Policies.
+// Version snapshots stay in Versions for audit. A policy that exists only in the bundled library
+// is recorded in Archive as well, so every page hides it.
+function delete_(body) {
+  const code = String(body.code || '').trim().toUpperCase();
+  if (!/^ICTD-\d+P$/.test(code)) throw new Error('invalid policy code: ' + code);
+  const reason = String(body.reason || '').slice(0, 500);
+  const user = String(body.user || '').slice(0, 120) || Session.getActiveUser().getEmail() || 'web';
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName(SH_POLICIES);
+    const ar = ss.getSheetByName(SH_ARCHIVE);
+    const row = findRow_(sh, [code]);
+    const now = new Date().toISOString();
+    let title = String(body.title || ''), ver = String(body.version || ''), chunks = jsonHeaders_().map(function () { return ''; });
+    if (row) {
+      const r = sh.getRange(row, 1, 1, POLICY_HEADERS.length).getDisplayValues()[0];
+      title = r[1]; ver = r[3];
+      chunks = sh.getRange(row, POLICY_HEADERS.length + 1, 1, JSON_COLS).getDisplayValues()[0];
+      chunks = chunks.map(function (c) { return c ? (c.charAt(0) === '~' ? c : '~' + c) : ''; });
+    }
+    writeRow_(ar, ar.getLastRow() + 1, [code, title, ver, now, user, reason].concat(chunks));
+    if (row) sh.deleteRow(row);
+    ss.getSheetByName(SH_LOG).appendRow([now, 'delete', code, ver, user, reason || (row ? 'deleted from register' : 'hidden library copy')]);
+    return { ok: true, code: code, deletedAt: now, fromRegister: !!row };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------------- admin: restore a deleted policy (menu inside the Google Sheet) ---------------- */
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('سجل السياسات')
+    .addItem('استرجاع سياسة محذوفة…', 'restorePolicyPrompt')
+    .addToUi();
+}
+function restorePolicyPrompt() {
+  const ui = SpreadsheetApp.getUi();
+  const r = ui.prompt('استرجاع سياسة محذوفة', 'اكتب رمز السياسة (مثال: ICTD-22P):', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const res = restorePolicy(r.getResponseText());
+  ui.alert(res.ok ? 'تم استرجاع ' + res.code + ' (الإصدار ' + res.version + ') إلى قائمة السياسات.' : 'تعذّر الاسترجاع: ' + res.error);
+}
+// Restores the most recent archived copy of a policy back into Policies (and its version snapshot)
+function restorePolicy(code) {
+  code = String(code || '').trim().toUpperCase();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  setup();
+  if (findRow_(ss.getSheetByName(SH_POLICIES), [code])) return { ok: false, error: 'السياسة موجودة حاليًا في القائمة' };
+  const ar = ss.getSheetByName(SH_ARCHIVE);
+  const n = ar.getLastRow() - 1;
+  let row = 0;
+  if (n > 0) {
+    const codes = ar.getRange(2, 1, n, 1).getDisplayValues();
+    for (let i = codes.length - 1; i >= 0; i--) if (String(codes[i][0]).toUpperCase() === code) { row = i + 2; break; }
+  }
+  if (!row) return { ok: false, error: 'لا توجد نسخة مؤرشفة لهذا الرمز' };
+  const parts = ar.getRange(row, ARCHIVE_HEADERS.length + 1, 1, JSON_COLS).getDisplayValues()[0];
+  if (!parts.join('')) return { ok: false, error: 'السياسة كانت من مكتبة السياسات فقط؛ أعد استيراد ملف JSON الخاص بها من القالب' };
+  const data = JSON.parse(parts.map(function (c) { return String(c).replace(/^~/, ''); }).join(''));
+  const res = save_({ data: data, force: true, user: Session.getActiveUser().getEmail() || 'admin' });
+  if (res.ok) ss.getSheetByName(SH_LOG).appendRow([new Date().toISOString(), 'restore', code, res.version, Session.getActiveUser().getEmail() || 'admin', 'restored from Archive']);
+  return res;
+}
+
+// Codes that were deleted and not re-created since
+function deleted_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ar = ss.getSheetByName(SH_ARCHIVE);
+  const n = ar.getLastRow() - 1;
+  if (n < 1) return [];
+  const live = {};
+  list_().forEach(function (x) { live[String(x.code).toUpperCase()] = 1; });
+  const out = {};
+  ar.getRange(2, 1, n, 1).getDisplayValues().forEach(function (r) {
+    const c = String(r[0]).toUpperCase(); if (c && !live[c]) out[c] = 1;
+  });
+  return Object.keys(out);
 }
 
 /* ---------------- read ---------------- */
