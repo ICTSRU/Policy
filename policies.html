@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>مكتبة السياسات | ICTD Policy Library v2.2</title>
+<title>مكتبة السياسات | ICTD Policy Library v2.3</title>
 <script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -50,6 +50,13 @@ tr:hover td{background:#fcfbfe}
 .badge{font-size:11px;border:1px solid var(--border);border-radius:999px;padding:0 8px;color:var(--muted);white-space:nowrap}
 .badge.reg{border-color:#47cd89;color:var(--ok)}
 .acts{display:flex;gap:6px;justify-content:flex-end}
+/* Policy Owner (v2.3) */
+.own{font-family:inherit;font-size:12.5px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 6px;background:#fff;color:var(--ink);min-width:150px;direction:ltr;text-align:right}
+.own:focus{outline:2px solid var(--purple);outline-offset:1px}
+.own.none{color:var(--warn);border-color:#fedf89;background:#fffcf5}
+.own.saving{opacity:.55}
+.own-ro{direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+.stat.noown b{color:var(--warn)}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 /* brand-kit fallback (same look as ITOC/brand/sru-brand.js) */
 .brandbar{background:#fff;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 24px;border-bottom:1px solid var(--border)}
@@ -107,6 +114,7 @@ dialog::backdrop{background:rgba(36,20,54,.5)}
   <div class="filters">
     <input type="search" id="q" placeholder="ابحث بالرمز أو العنوان العربي أو الإنجليزي…" oninput="render()">
     <select id="fStatus" onchange="render()"><option value="">كل الحالات</option><option>مسودة</option><option>قيد المراجعة</option><option>معتمدة</option></select>
+    <select id="fOwner" onchange="render()"></select>
     <span class="src" id="src"><span class="dot"></span>جارٍ التحميل…</span>
   </div>
   <div class="card"><div id="list" class="empty">جارٍ تحميل السياسات…</div></div>
@@ -133,13 +141,16 @@ dialog::backdrop{background:rgba(36,20,54,.5)}
 <div class="toast" id="toast"></div>
 
 <script>
-/* ICTD Policy Library — v2.2 (home button; brand-kit fallback logos from docs/)
+/* ICTD Policy Library — v2.3 (Policy Owner column with dropdown, owner filter, «بدون مالك» card; needs Code.gs v2.1)
+   v2.2 (home button; brand-kit fallback logos from docs/)
    v2.1 (detects an outdated register backend before allowing delete)
    v2.0 (adds delete with type-to-confirm; soft delete to the register Archive sheet)
    Source order: Google Sheets register (latest) → bundled library (policies/library.js) for anything not in the register. */
 const CFG_KEY='ictd-policy-template-cfg';
-let ITEMS=[], FILTER='', REG_OK=false, DEL=null, SRV_VER='', CAN_DEL=false;
-const MIN_SRV=2.0; // delete needs Code.gs v2.0 or later
+let ITEMS=[], FILTER='', REG_OK=false, DEL=null, SRV_VER='', CAN_DEL=false, CAN_OWN=false, LIB={};
+const MIN_SRV=2.0;     // delete needs Code.gs v2.0 or later
+const MIN_SRV_OWN=2.1; // Policy Owner needs Code.gs v2.1 or later
+const OWNERS=(window.POLICY_CFG&&POLICY_CFG.owners)||['Mohamed ElMahdy','Mohamed Nawaz','Mohamed Omar','Mohamed Saleh'];
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function cfg(){ let c={}; try{c=JSON.parse(localStorage.getItem(CFG_KEY)||'{}')}catch(e){} return c; }
@@ -185,6 +196,51 @@ async function delRun(){
     delCheck();
   }
 }
+/* ---------- Policy Owner (v2.3) ---------- */
+function ownerFilter(){
+  const sel=$('#fOwner'), cur=sel.value;
+  const names=[...new Set(OWNERS.concat(ITEMS.map(x=>x.ownerPerson).filter(Boolean)))];
+  sel.innerHTML='<option value="">كل المالكين</option>'+names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')+'<option value="__none">بدون مالك</option>';
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+}
+function ownerCell(x){
+  const v=x.ownerPerson||'';
+  if(!CAN_OWN){
+    const why=REG_OK?'حدّث كود السجل إلى Code.gs v2.1 لتفعيل تعيين المالك':'تعيين المالك يتطلب الاتصال بسجل السياسات';
+    return `<span class="own-ro" title="${why}">${v?esc(v):'<span class="src">—</span>'}</span>`;
+  }
+  const names=OWNERS.includes(v)||!v?OWNERS:OWNERS.concat([v]);
+  return `<select class="own ${v?'':'none'}" aria-label="مالك السياسة ${esc(x.code)}" data-code="${esc(x.code)}" onchange="setOwner(this)">
+    <option value="" ${v?'':'selected'}>— اختر المالك —</option>${names.map(n=>`<option value="${esc(n)}" ${n===v?'selected':''}>${esc(n)}</option>`).join('')}</select>`;
+}
+async function setOwner(sel){
+  const code=sel.dataset.code, it=ITEMS.find(x=>x.code===code); if(!it) return;
+  const prev=it.ownerPerson||'', owner=sel.value;
+  if(owner===prev) return;
+  let who=cfg().user||''; try{who=who||localStorage.getItem('ictd-policy-user')||''}catch(e){}
+  sel.disabled=true; sel.classList.add('saving');
+  try{
+    let r;
+    if(it.src==='reg'){
+      r=await apiPost({action:'setOwner',code,owner,user:who});
+    }else{
+      // library-only policy: save the bundled copy into the register together with its owner
+      const d=JSON.parse(JSON.stringify(LIB[code.toUpperCase()]||null)); if(!d) throw new Error('not found');
+      d.meta.ownerPerson=owner;
+      r=await apiPost({action:'save',data:d,user:who,baseUpdatedAt:null});
+      if(r.ok) it.src='reg';
+    }
+    if(!r.ok) throw new Error(r.error||'');
+    it.ownerPerson=owner; it.updatedAt=r.updatedAt||it.updatedAt;
+    toast(owner?`تم تعيين ${owner} مالكًا للسياسة ${code}`:`أُزيل مالك السياسة ${code}`);
+    ownerFilter(); render();
+  }catch(e){
+    sel.value=prev; sel.disabled=false; sel.classList.remove('saving');
+    const m=e.message||'';
+    toast('تعذّر حفظ المالك: '+(/unknown action/i.test(m)?'كود السجل قديم — حدّث Code.gs إلى v2.1':/unauthorized/i.test(m)?'مفتاح الوصول غير صحيح':/not found/i.test(m)?'السياسة غير موجودة في السجل':(m||'تعذّر الاتصال بالسجل')));
+  }
+}
+
 function loadLibrary(){
   return new Promise(ok=>{ if(window.POLICY_LIBRARY) return ok(window.POLICY_LIBRARY);
     const sc=document.createElement('script'); sc.src='policies/library.js'; sc.onload=()=>ok(window.POLICY_LIBRARY||[]); sc.onerror=()=>ok([]); document.head.appendChild(sc); });
@@ -196,36 +252,39 @@ async function load(){
   $('#list').innerHTML='<div class="empty">جارٍ تحميل السياسات…</div>';
   const map={};
   // 1) bundled library
-  (await loadLibrary()).forEach(d=>{ const m=d.meta; map[m.code.toUpperCase()]={code:m.code,titleAr:m.titleAr,titleEn:m.titleEn,version:m.version,status:m.status,classification:m.classification,nextReview:m.nextReview,src:'lib'}; });
+  LIB={};
+  (await loadLibrary()).forEach(d=>{ const m=d.meta; LIB[m.code.toUpperCase()]=d; map[m.code.toUpperCase()]={code:m.code,titleAr:m.titleAr,titleEn:m.titleEn,version:m.version,status:m.status,classification:m.classification,nextReview:m.nextReview,ownerPerson:m.ownerPerson||'',src:'lib'}; });
   // 2) register (overrides library entries with the latest saved copy)
-  let regOk=false, regN=0, deleted=[]; SRV_VER=''; CAN_DEL=false;
+  let regOk=false, regN=0, deleted=[]; SRV_VER=''; CAN_DEL=false; CAN_OWN=false;
   if(apiUrl()){
-    try{ const r=await api({action:'list'}); if(r.ok){ regOk=true; deleted=(r.deleted||[]).map(c=>String(c).toUpperCase()); r.items.forEach(x=>{ regN++; const k=x.code.toUpperCase(); map[k]=Object.assign({},map[k]||{},{code:x.code,titleAr:x.titleAr,titleEn:x.titleEn,version:x.version,status:x.status,nextReview:x.nextReview,updatedAt:x.updatedAt,updatedBy:x.updatedBy,src:'reg'}); }); } }catch(e){}
+    try{ const r=await api({action:'list'}); if(r.ok){ regOk=true; deleted=(r.deleted||[]).map(c=>String(c).toUpperCase()); r.items.forEach(x=>{ regN++; const k=x.code.toUpperCase(); map[k]=Object.assign({},map[k]||{},{code:x.code,titleAr:x.titleAr,titleEn:x.titleEn,version:x.version,status:x.status,nextReview:x.nextReview,ownerPerson:x.ownerPerson||'',updatedAt:x.updatedAt,updatedBy:x.updatedBy,src:'reg'}); }); } }catch(e){}
   }
-  if(regOk){ try{ const pg=await api({action:'ping'}); SRV_VER=(pg&&pg.version)||''; }catch(e){} CAN_DEL=parseFloat(String(SRV_VER).replace(/[^\d.]/g,''))>=MIN_SRV; }
+  if(regOk){ try{ const pg=await api({action:'ping'}); SRV_VER=(pg&&pg.version)||''; }catch(e){} const sv=parseFloat(String(SRV_VER).replace(/[^\d.]/g,''))||0; CAN_DEL=sv>=MIN_SRV; CAN_OWN=sv>=MIN_SRV_OWN; }
   deleted.forEach(c=>{ if(map[c]&&map[c].src!=='reg') delete map[c]; });
   REG_OK=regOk;
   const s=$('#src');
   s.className='src '+(regOk?'ok':'err');
-  s.innerHTML='<span class="dot"></span>'+(regOk?`متصل بالسجل (${regN} في السجل)`+(CAN_DEL?'':` — <b style="color:var(--danger)">كود السجل قديم (${esc(SRV_VER||'؟')})؛ الحذف يتطلب Code.gs v2.0</b>`):'السجل غير متاح — تُعرض نسخ مكتبة السياسات');
+  s.innerHTML='<span class="dot"></span>'+(regOk?`متصل بالسجل (${regN} في السجل)`+(!CAN_DEL||CAN_OWN?'':` — <b style="color:var(--warn)">تعيين المالك يتطلب Code.gs v2.1</b>`)+(CAN_DEL?'':` — <b style="color:var(--danger)">كود السجل قديم (${esc(SRV_VER||'؟')})؛ الحذف يتطلب Code.gs v2.0</b>`):'السجل غير متاح — تُعرض نسخ مكتبة السياسات');
   ITEMS=Object.values(map).sort((a,b)=>num(a.code)-num(b.code));
+  ownerFilter();
   render();
 }
 
 function stats(){
   const c=k=>ITEMS.filter(k).length;
-  const cards=[['','الإجمالي',ITEMS.length],['معتمدة','معتمدة',c(x=>x.status==='معتمدة')],['قيد المراجعة','قيد المراجعة',c(x=>x.status==='قيد المراجعة')],['مسودة','مسودة',c(x=>x.status==='مسودة')],['due','حان موعد مراجعتها',c(x=>x.nextReview&&x.nextReview<=today)]];
-  $('#stats').innerHTML=cards.map(([k,l,n])=>`<div class="stat ${FILTER===k&&k!==''?'on':''} ${k==='due'?'due':''}" onclick="FILTER=FILTER==='${k}'?'':'${k}';render()"><b>${n}</b><span>${l}</span></div>`).join('');
+  const cards=[['','الإجمالي',ITEMS.length],['معتمدة','معتمدة',c(x=>x.status==='معتمدة')],['قيد المراجعة','قيد المراجعة',c(x=>x.status==='قيد المراجعة')],['مسودة','مسودة',c(x=>x.status==='مسودة')],['due','حان موعد مراجعتها',c(x=>x.nextReview&&x.nextReview<=today)],['noown','بدون مالك',c(x=>!x.ownerPerson)]];
+  $('#stats').innerHTML=cards.map(([k,l,n])=>`<div class="stat ${FILTER===k&&k!==''?'on':''} ${k==='due'?'due':''} ${k==='noown'?'noown':''}" onclick="FILTER=FILTER==='${k}'?'':'${k}';render()"><b>${n}</b><span>${l}</span></div>`).join('');
 }
 function render(){
   stats();
-  const q=$('#q').value.trim().toLowerCase(), st=$('#fStatus').value;
-  const rows=ITEMS.filter(x=>(!q||[x.code,x.titleAr,x.titleEn].join(' ').toLowerCase().includes(q))
+  const q=$('#q').value.trim().toLowerCase(), st=$('#fStatus').value, ow=$('#fOwner').value;
+  const rows=ITEMS.filter(x=>(!q||[x.code,x.titleAr,x.titleEn,x.ownerPerson].join(' ').toLowerCase().includes(q))
     &&(!st||x.status===st)
-    &&(!FILTER||(FILTER==='due'?(x.nextReview&&x.nextReview<=today):x.status===FILTER)));
+    &&(!ow||(ow==='__none'?!x.ownerPerson:x.ownerPerson===ow))
+    &&(!FILTER||(FILTER==='due'?(x.nextReview&&x.nextReview<=today):FILTER==='noown'?!x.ownerPerson:x.status===FILTER)));
   if(!rows.length){ $('#list').innerHTML='<div class="empty">لا توجد سياسات مطابقة.</div>'; return; }
   const cls={'مسودة':'d','قيد المراجعة':'r','معتمدة':'a'};
-  $('#list').innerHTML=`<table><thead><tr><th>الرمز</th><th>عنوان السياسة</th><th>الإصدار</th><th>الحالة</th><th>المراجعة القادمة</th><th>المصدر</th><th></th></tr></thead><tbody>${rows.map(x=>{
+  $('#list').innerHTML=`<table><thead><tr><th>الرمز</th><th>عنوان السياسة</th><th>الإصدار</th><th>الحالة</th><th>المراجعة القادمة</th><th>المالك <span style="font-weight:400">Owner</span></th><th>المصدر</th><th></th></tr></thead><tbody>${rows.map(x=>{
     const due=x.nextReview&&x.nextReview<=today, src=x.src==='reg'?'reg':'lib';
     const link=`index.html?code=${encodeURIComponent(x.code)}&src=${src}`;
     return `<tr>
@@ -234,6 +293,7 @@ function render(){
       <td>${esc(x.version)}</td>
       <td><span class="st ${cls[x.status]||'d'}">${esc(x.status||'—')}</span></td>
       <td class="${due?'due':''}">${esc(x.nextReview||'—')}${due?' ⚠':''}</td>
+      <td>${ownerCell(x)}</td>
       <td><span class="badge ${src==='reg'?'reg':''}">${src==='reg'?'السجل':'المكتبة'}</span></td>
       <td><div class="acts">
         <a class="btn sm" href="${link}&view=1" target="_blank" rel="noopener"><i data-lucide="eye" class="icon"></i>عرض</a>
@@ -251,11 +311,11 @@ window.addEventListener('load',()=>{
   h.innerHTML='<img class="b-sru" src="docs/sru-logo.png" alt="جامعة سليمان الراجحي"><img class="b-ictd" src="docs/ictd-logo.png" alt="الإدارة التنفيذية للاتصالات وتقنية المعلومات">';
   document.body.insertBefore(h,document.body.firstChild);
   const f=document.createElement('footer'); f.className='sitefoot';
-  f.innerHTML='<span><b>مكتبة السياسات · ICTD Policy Library</b> — الإصدار <b>v2.2</b><br>الإدارة التنفيذية للاتصالات وتقنية المعلومات · جامعة سليمان الراجحي © '+new Date().getFullYear()+'</span><a href="https://ictsru.github.io/ITOC/#forms" target="_blank" rel="noopener" title="ITOC · IT Operations Center"><img src="docs/itoc-logo.png" alt="ITOC · IT Operations Center"></a>';
+  f.innerHTML='<span><b>مكتبة السياسات · ICTD Policy Library</b> — الإصدار <b>v2.3</b><br>الإدارة التنفيذية للاتصالات وتقنية المعلومات · جامعة سليمان الراجحي © '+new Date().getFullYear()+'</span><a href="https://ictsru.github.io/ITOC/#forms" target="_blank" rel="noopener" title="ITOC · IT Operations Center"><img src="docs/itoc-logo.png" alt="ITOC · IT Operations Center"></a>';
   document.body.appendChild(f);
 });
 </script>
 <!-- Shared SRU Brand Kit: logo header + footer with ITOC logo -->
-<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="مكتبة السياسات · ICTD Policy Library" data-form-version="v2.2" defer></script>
+<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="مكتبة السياسات · ICTD Policy Library" data-form-version="v2.3" defer></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>نموذج إعداد السياسات | ICTD Policy Template v2.2</title>
+<title>نموذج إعداد السياسات | ICTD Policy Template v2.3</title>
 <script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -234,7 +234,7 @@ dialog::backdrop{background:rgba(36,20,54,.45)}
   <section class="preview-wrap"><article class="doc" id="doc"></article></section>
 </main>
 <!-- Shared SRU Brand Kit: logo header (top) + footer with ITOC logo (bottom-left) -->
-<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="نموذج إعداد السياسات · ICTD Policy Template" data-form-version="v2.2" defer></script>
+<script src="https://ictsru.github.io/ITOC/brand/sru-brand.js" data-form-title="نموذج إعداد السياسات · ICTD Policy Template" data-form-version="v2.3" defer></script>
 <div class="toast" id="toast"></div>
 
 <dialog id="dlgReg">
@@ -287,6 +287,7 @@ dialog::backdrop{background:rgba(36,20,54,.45)}
    v1.6 Batch-import button on the main toolbar; real connection check for the register status badge
    v1.7 Settings button hidden (admin shortcut Ctrl+Alt+S); SRU + ICTD logos at page top; ITOC logo bottom-left linked to the forms hub
    v1.8 Header & footer now come from the shared SRU Brand Kit (ITOC/brand/sru-brand.js); built-in logos kept as offline fallback
+   v2.3 Policy Owner (مالك السياسة): dropdown in Document Control (list from config.js), shown in the document; set per policy from the library page
    v2.2 Library page: «الصفحة الرئيسية» button and logo header/footer fallback
    v2.1 Library page detects an outdated register backend (Code.gs < v2.0) and explains it instead of «unknown action»
    v2.0 Delete (soft, type-to-confirm) from the policy library; backend Code.gs v2.0 with Archive sheet
@@ -294,7 +295,7 @@ dialog::backdrop{background:rgba(36,20,54,.45)}
    Structure derived from the approved ICTD policy set
    (ICTD-01P … ICTD-24P); full model = ICTD-24P (Cybersecurity).
    ========================================================= */
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.3';
 /* ===== Google Sheets register (Apps Script Web App) =====
    Paste the deployed Web App URL here so every user is connected by default,
    or set it per-browser from the ⚙ settings dialog. */
@@ -356,7 +357,7 @@ const SECTIONS = [
 
 function blank(){
   return {
-    meta:{titleAr:'',titleEn:'',code:'ICTD-',version:'1.0',issueDate:'',owner:DEPT,approver:'',
+    meta:{titleAr:'',titleEn:'',code:'ICTD-',version:'1.0',issueDate:'',owner:DEPT,ownerPerson:'',approver:'',
           classification:'عام',status:'مسودة',reviewCycle:'سنويًا',nextReview:'',preparedBy:''},
     on:{purpose:true,scope:true,refs:false,policies:true,matrix:false,procedures:true,exceptions:true,
         enforcement:true,roles:true,related:true,terms:true,revisions:true,approval:false},
@@ -406,6 +407,12 @@ function numbering(){
 }
 
 /* ---------- editor rendering ---------- */
+// Policy Owner (v2.3): names come from config.js (POLICY_CFG.owners); a saved name no longer in the list is kept
+function ownerFld(){
+  const list=(window.POLICY_CFG&&POLICY_CFG.owners)||['Mohamed ElMahdy','Mohamed Nawaz','Mohamed Omar','Mohamed Saleh'];
+  const v=S.meta.ownerPerson||'', names=!v||list.includes(v)?list:list.concat([v]);
+  return `<label class="f">مالك السياسة <span class="en" style="color:inherit">Policy Owner</span><select data-p="meta.ownerPerson" dir="ltr" style="text-align:right"><option value="" ${v?'':'selected'}>— اختر المالك —</option>${names.map(n=>`<option value="${esc(n)}" ${n===v?'selected':''}>${esc(n)}</option>`).join('')}</select><span class="hint">يمكن تعيينه أيضًا من مكتبة السياسات.</span></label>`;
+}
 function fld(label,path,opts={}){
   const v=esc(getPath(S,path)??'');
   const r=opts.req?' <span class="req">*</span>':'';
@@ -436,6 +443,7 @@ function renderEditor(){
       ${fld('أُعدت بواسطة','meta.preparedBy',{})}
     </div>
     ${fld('الجهة المالكة للسياسة','meta.owner',{req:1})}
+    ${ownerFld()}
     ${fld('جهة الاعتماد','meta.approver',{ph:'مثال: لجنة أمن المعلومات / لجنة حوكمة تقنية المعلومات'})}
   </div></details>`;
 
@@ -532,6 +540,7 @@ function renderDoc(){
       <tr><th>رمز السياسة</th><td dir="ltr" style="text-align:right">${esc(m.code)}</td><th>رقم الإصدار</th><td>${esc(m.version)}</td></tr>
       <tr><th>تاريخ الإصدار</th><td>${esc(fmtDate(m.issueDate))||'—'}</td><th>المراجعة القادمة</th><td>${esc(fmtDate(m.nextReview))||'—'} <span class="hint">(${esc(m.reviewCycle)})</span></td></tr>
       <tr><th>الجهة المالكة</th><td>${esc(m.owner)}</td><th>جهة الاعتماد</th><td>${esc(m.approver)||'—'}</td></tr>
+      <tr><th>مالك السياسة</th><td colspan="3" dir="ltr" style="text-align:right">${esc(m.ownerPerson)||'—'}</td></tr>
       <tr><th>التصنيف</th><td>${esc(m.classification)}</td><th>الحالة</th><td><span class="status ${stCls}">${esc(m.status)}</span></td></tr>
     </table>`;
 
@@ -739,7 +748,7 @@ async function loadRegister(){
 function renderRegister(){
   const q=($('#regQ').value||'').trim().toLowerCase();
   const today=new Date().toISOString().slice(0,10);
-  const items=SYNC.items.filter(x=>!q||[x.code,x.titleAr,x.titleEn,x.status,x.owner].join(' ').toLowerCase().includes(q))
+  const items=SYNC.items.filter(x=>!q||[x.code,x.titleAr,x.titleEn,x.status,x.owner,x.ownerPerson].join(' ').toLowerCase().includes(q))
     .sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
   if(!items.length){ $('#regBody').innerHTML='<span class="hint">لا توجد سياسات محفوظة'+(q?' مطابقة للبحث':'')+'.</span>'; return; }
   let h=`<div style="overflow-x:auto"><table class="reg"><thead><tr><th>الرمز</th><th>عنوان السياسة</th><th>الإصدار</th><th>الحالة</th><th>المراجعة القادمة</th><th>آخر تحديث</th><th></th></tr></thead><tbody>`;

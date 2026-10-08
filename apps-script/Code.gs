@@ -1,6 +1,6 @@
 /**
  * ICTD Policy Register — Google Apps Script Web App
- * Backend for: نموذج إعداد السياسات (ICTD Policy Template) v2.0
+ * Backend for: نموذج إعداد السياسات (ICTD Policy Template) v2.3
  * ---------------------------------------------------------------
  * Sheets created automatically on first run:
  *   Policies  — one row per policy code (latest saved state)
@@ -15,13 +15,14 @@
  *   GET  ?action=versions&code=ICTD-22P            → versions of one policy
  *   POST {action:'save', data:{…}, baseUpdatedAt, force, user, key}
  *   POST {action:'delete', code, reason, user, key}   → moves the policy to Archive
+ *   POST {action:'setOwner', code, owner, user, key}  → sets the Policy Owner (v2.1)
  *        (sent as text/plain to avoid CORS preflight)
  *
  * Optional security: Project Settings → Script properties → API_KEY = <secret>
  * If set, every request must carry the same key.
  */
 
-const VERSION = 'v2.0';
+const VERSION = 'v2.1';   // v2.1: Policy Owner (column «مالك السياسة Owner» + setOwner)
 const SH_POLICIES = 'Policies';
 const SH_VERSIONS = 'Versions';
 const SH_LOG = 'Log';
@@ -29,6 +30,7 @@ const SH_ARCHIVE = 'Archive';
 const ARCHIVE_HEADERS = ['رمز السياسة Code','عنوان السياسة','الإصدار Version','تاريخ الحذف DeletedAt','حُذفت بواسطة DeletedBy','سبب الحذف Reason'];
 const CHUNK = 45000;     // Google Sheets cell limit is 50,000 chars
 const JSON_COLS = 8;     // up to ~360k chars per policy
+const OWNER_HEADER = 'مالك السياسة Owner';
 
 const POLICY_HEADERS = ['رمز السياسة Code','عنوان السياسة','Title (EN)','الإصدار Version','الحالة Status','التصنيف','الجهة المالكة','جهة الاعتماد','تاريخ الإصدار','المراجعة القادمة','أُعدت بواسطة','عدد الأقسام','آخر تحديث UpdatedAt','حُدّثت بواسطة UpdatedBy'];
 const VERSION_HEADERS = ['رمز السياسة Code','الإصدار Version','عنوان السياسة','الحالة Status','تاريخ الحفظ SavedAt','بواسطة SavedBy'];
@@ -40,12 +42,21 @@ function setup() {
   ensureSheet_(ss, SH_VERSIONS, VERSION_HEADERS.concat(jsonHeaders_()));
   ensureSheet_(ss, SH_LOG, ['الوقت Time','الإجراء Action','رمز السياسة Code','الإصدار Version','بواسطة User','ملاحظات Notes']);
   ensureSheet_(ss, SH_ARCHIVE, ARCHIVE_HEADERS.concat(jsonHeaders_()));
+  ensureOwnerCol_(ss.getSheetByName(SH_POLICIES));
   // remove the empty default sheet of a new spreadsheet
   ['Sheet1', 'الورقة1', 'ورقة1'].forEach(function (n) {
     const s = ss.getSheetByName(n);
     if (s && s.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s);
   });
   return 'OK';
+}
+// Policy Owner lives in a visible column after the hidden JSON columns, so existing sheets keep their layout
+function ownerCol_() { return POLICY_HEADERS.length + JSON_COLS + 1; }
+function ensureOwnerCol_(sh) {
+  const c = ownerCol_();
+  if (String(sh.getRange(1, c).getDisplayValue()) !== OWNER_HEADER) {
+    sh.getRange(1, c).setValue(OWNER_HEADER).setFontWeight('bold').setBackground('#501e8c').setFontColor('#ffffff');
+  }
 }
 function jsonHeaders_() { const a = []; for (let i = 1; i <= JSON_COLS; i++) a.push('JSON_' + i); return a; }
 function ensureSheet_(ss, name, headers) {
@@ -84,6 +95,7 @@ function doPost(e) {
     setup();
     if (body.action === 'save') return out_(save_(body));
     if (body.action === 'delete') return out_(delete_(body));
+    if (body.action === 'setOwner') return out_(setOwner_(body));
     return out_({ ok: false, error: 'unknown action' });
   } catch (err) { return out_({ ok: false, error: String(err.message || err) }); }
 }
@@ -132,7 +144,10 @@ function save_(body) {
     const values = [code, m.titleAr || '', m.titleEn || '', ver, m.status || '', m.classification || '',
                     m.owner || '', m.approver || '', m.issueDate || '', m.nextReview || '', m.preparedBy || '',
                     sections, now, user].concat(chunks);
-    writeRow_(sh, row || sh.getLastRow() + 1, values);
+    const prow = row || sh.getLastRow() + 1;
+    writeRow_(sh, prow, values);
+    // Policy Owner: written from the policy data; an older client that does not send it keeps the current value
+    if (m.ownerPerson !== undefined || !row) writeCell_(sh, prow, ownerCol_(), cleanOwner_(m.ownerPerson));
 
     // Version snapshot: one row per code+version (updated in place while editing that version)
     const vs = ss.getSheetByName(SH_VERSIONS);
@@ -156,6 +171,12 @@ function writeRow_(sh, r, values) {
     return /^[=+\-@]/.test(v) ? "'" + v : v;    // never let user text be parsed as a formula
   })]);
 }
+
+function writeCell_(sh, r, c, v) {
+  v = String(v == null ? '' : v);
+  sh.getRange(r, c).setNumberFormat('@').setValue(/^[=+\-@]/.test(v) ? "'" + v : v);
+}
+function cleanOwner_(v) { return String(v == null ? '' : v).trim().slice(0, 120); }
 
 function chunk_(s) {
   if (s.length > CHUNK * JSON_COLS) throw new Error('policy too large');
@@ -208,6 +229,47 @@ function delete_(body) {
     if (row) sh.deleteRow(row);
     ss.getSheetByName(SH_LOG).appendRow([now, 'delete', code, ver, user, reason || (row ? 'deleted from register' : 'hidden library copy')]);
     return { ok: true, code: code, deletedAt: now, fromRegister: !!row };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------------- Policy Owner (v2.1) ---------------- */
+// Sets (or clears, with an empty owner) the Policy Owner of a policy that is in the register.
+// The owner is written to the «مالك السياسة Owner» column and into the policy JSON (meta.ownerPerson)
+// of the live row and of the current version snapshot, so the template, Word/PDF and Archive all carry it.
+// UpdatedAt changes, so an editor that has the policy open gets the usual conflict warning instead of
+// silently overwriting the new owner.
+function setOwner_(body) {
+  const code = String(body.code || '').trim().toUpperCase();
+  if (!/^ICTD-\d+P$/.test(code)) throw new Error('invalid policy code: ' + code);
+  const owner = cleanOwner_(body.owner);
+  const user = String(body.user || '').slice(0, 120) || Session.getActiveUser().getEmail() || 'web';
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName(SH_POLICIES);
+    const row = findRow_(sh, [code]);
+    if (!row) throw new Error('not found');
+    const firstJson = POLICY_HEADERS.length + 1;
+    const d = readJson_(sh, row, firstJson);
+    d.meta = d.meta || {};
+    const before = cleanOwner_(d.meta.ownerPerson || sh.getRange(row, ownerCol_()).getDisplayValue());
+    d.meta.ownerPerson = owner;
+    const chunks = chunk_(JSON.stringify(d));
+    const now = new Date().toISOString();
+    sh.getRange(row, firstJson, 1, JSON_COLS).setNumberFormat('@').setValues([chunks]);
+    writeCell_(sh, row, 13, now);
+    writeCell_(sh, row, 14, user);
+    writeCell_(sh, row, ownerCol_(), owner);
+    // keep the current version snapshot in step
+    const ver = String(sh.getRange(row, 4).getDisplayValue());
+    const vs = ss.getSheetByName(SH_VERSIONS);
+    const vrow = findRow_(vs, [code, ver]);
+    if (vrow) vs.getRange(vrow, VERSION_HEADERS.length + 1, 1, JSON_COLS).setNumberFormat('@').setValues([chunks]);
+    ss.getSheetByName(SH_LOG).appendRow([now, 'owner', code, ver, user, (before || '—') + ' → ' + (owner || '—')]);
+    return { ok: true, code: code, owner: owner, updatedAt: now };
   } finally {
     lock.releaseLock();
   }
@@ -268,9 +330,10 @@ function list_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_POLICIES);
   const n = sh.getLastRow() - 1;
   if (n < 1) return [];
-  return sh.getRange(2, 1, n, POLICY_HEADERS.length).getDisplayValues().map(function (r) {
+  const owners = sh.getRange(2, ownerCol_(), n, 1).getDisplayValues();
+  return sh.getRange(2, 1, n, POLICY_HEADERS.length).getDisplayValues().map(function (r, i) {
     return { code: r[0], titleAr: r[1], titleEn: r[2], version: r[3], status: r[4], owner: r[6],
-             nextReview: r[9], updatedAt: r[12], updatedBy: r[13] };
+             ownerPerson: owners[i][0], nextReview: r[9], updatedAt: r[12], updatedBy: r[13] };
   }).filter(function (x) { return x.code; });
 }
 
